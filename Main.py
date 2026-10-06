@@ -409,7 +409,15 @@ async def list_google_drive_files() -> Dict[str, Any]:
     try:
         from google.oauth2 import service_account
         from googleapiclient.discovery import build
+    except ImportError as exc:
+        logger.warning("Google Drive dependencies are missing: %s", exc)
+        return {
+            "status": "missing_dependency",
+            "message": "Google Drive support is not installed. Install google-auth and google-api-python-client in the runtime environment.",
+            "files": [],
+        }
 
+    try:
         if json_string:
             creds = service_account.Credentials.from_service_account_info(json.loads(json_string))
         else:
@@ -444,6 +452,41 @@ async def list_google_drive_files() -> Dict[str, Any]:
             "message": f"Google Drive could not be accessed: {exc}",
             "files": [],
         }
+
+
+@app.get("/drive/files")
+async def drive_files() -> Dict[str, Any]:
+    return await list_google_drive_files()
+
+
+@app.get("/health")
+async def health() -> Dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/route", response_model=RouteResponse)
+async def route(req: RouteRequest):
+    prompt = req.prompt.strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
+
+    decision = await gatekeeper_decision(prompt)
+    decision = decision.strip().upper()
+    logger.info("Gatekeeper decision: %s", decision)
+
+    if decision == "GEMINI":
+        response = await call_gemini(prompt)
+        backend = "GEMINI"
+    elif decision == "OPENROUTER":
+        response = await call_openrouter(prompt)
+        backend = "OPENROUTER"
+    elif decision == "CLAUDE":
+        response = await call_claude(prompt)
+        backend = "CLAUDE"
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown routing decision: {decision}")
+
+    return RouteResponse(backend=backend, response={"result": response})
 
 
 def _default_function_questions(goal: str) -> list[str]:
