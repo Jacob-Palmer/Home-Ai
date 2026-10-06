@@ -19,6 +19,7 @@ logger = logging.getLogger("home_ai_gatekeeper")
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Home AI Gatekeeper")
+# Rebuild trigger: 2026-10-06 14:55:00 UTC
 DB_PATH = os.path.join(os.path.dirname(__file__), "custom_functions.db")
 
 
