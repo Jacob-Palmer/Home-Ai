@@ -172,75 +172,39 @@ async def gatekeeper_decision(prompt: str) -> str:
         return _fallback_gatekeeper(prompt)
 
     try:
-        try:
-            from google import genai as google_genai
-            client = google_genai.Client(api_key=api_key)
+        from google import genai as google_genai
+        client = google_genai.Client(api_key=api_key)
 
-            def _call() -> str:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=[{"role": "user", "content": prompt}],
-                    config={
-                        "system_instruction": system_instruction,
-                        "temperature": 0.0,
-                        "max_output_tokens": 16,
-                    },
-                )
-                text = getattr(response, "text", None)
-                if text:
-                    return str(text)
-                candidates = getattr(response, "candidates", None) or []
-                if candidates:
-                    content = getattr(candidates[0], "content", None)
-                    parts = getattr(content, "parts", None) or []
-                    if parts:
-                        first = getattr(parts[0], "text", None)
-                        if first:
-                            return str(first)
-                return ""
+        def _call() -> str:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[{"role": "user", "content": prompt}],
+                config={
+                    "system_instruction": system_instruction,
+                    "temperature": 0.0,
+                    "max_output_tokens": 16,
+                },
+            )
+            text = getattr(response, "text", None)
+            if text:
+                return str(text)
+            candidates = getattr(response, "candidates", None) or []
+            if candidates:
+                content = getattr(candidates[0], "content", None)
+                parts = getattr(content, "parts", None) or []
+                if parts:
+                    first = getattr(parts[0], "text", None)
+                    if first:
+                        return str(first)
+            return ""
 
-            decision = await asyncio.to_thread(_call)
-            decision = _sanitize_decision(decision)
-            if decision in {"GEMINI", "OPENROUTER", "CLAUDE"}:
-                return decision
-        except Exception:
-            logger.exception("Primary Google GenAI SDK failed; trying legacy SDK")
-
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-
-            def _legacy_call() -> str:
-                model = genai.GenerativeModel(
-                    model_name=model_name,
-                    system_instruction=system_instruction,
-                )
-                response = model.generate_content(
-                    prompt,
-                    generation_config={"temperature": 0.0, "max_output_tokens": 16},
-                )
-                text = getattr(response, "text", None)
-                if text:
-                    return str(text)
-                candidates = getattr(response, "candidates", None) or []
-                if candidates:
-                    first = candidates[0]
-                    parts = getattr(first, "content", None)
-                    try:
-                        if parts is not None:
-                            return str(parts.parts[0].text)
-                    except Exception:
-                        pass
-                return ""
-
-            decision = await asyncio.to_thread(_legacy_call)
-            decision = _sanitize_decision(decision)
-            if decision in {"GEMINI", "OPENROUTER", "CLAUDE"}:
-                return decision
-        except Exception:
-            logger.exception("Legacy Google SDK failed")
+        decision = await asyncio.to_thread(_call)
+        decision = _sanitize_decision(decision)
+        if decision in {"GEMINI", "OPENROUTER", "CLAUDE"}:
+            return decision
+        logger.warning("Gatekeeper returned invalid decision: %s", decision)
     except Exception as exc:
-        logger.warning("Gemini gatekeeper call failed; using fallback: %s", exc)
+        logger.warning("Gemini gatekeeper failed: %s", exc)
 
     return _fallback_gatekeeper(prompt)
 
@@ -250,62 +214,44 @@ async def call_gemini(prompt: str) -> Dict[str, Any]:
     model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
     if not api_key:
-        return {"text": "(GEMINI-FALLBACK) GEMINI_API_KEY not configured."}
+        return {"text": "GEMINI_API_KEY not configured.", "backend": "GEMINI"}
 
     system_prompt = "You are a helpful assistant. Answer clearly, accurately, and concisely."
 
     try:
-        try:
-            from google import genai as google_genai
-            client = google_genai.Client(api_key=api_key)
+        from google import genai as google_genai
+        client = google_genai.Client(api_key=api_key)
 
-            def _call() -> Any:
-                return client.models.generate_content(
-                    model=model_name,
-                    contents=[{"role": "user", "content": prompt}],
-                    config={
-                        "system_instruction": system_prompt,
-                        "temperature": 0.3,
-                        "max_output_tokens": 2048,
-                    },
-                )
-
-            result = await asyncio.to_thread(_call)
-            text = getattr(result, "text", None)
-            if not text:
-                candidates = getattr(result, "candidates", None) or []
-                if candidates:
-                    content = getattr(candidates[0], "content", None)
-                    parts = getattr(content, "parts", None) or []
-                    if parts:
-                        text = getattr(parts[0], "text", None)
-            if text:
-                return {"text": str(text), "backend": "GEMINI", "raw": result}
-            return {"text": "No response returned by Gemini.", "backend": "GEMINI"}
-        except Exception:
-            logger.exception("New Gemini SDK failed; trying legacy SDK")
-
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-
-        def _legacy_call() -> Any:
-            model = genai.GenerativeModel(
-                model_name=model_name,
-                system_instruction=system_prompt,
-            )
-            return model.generate_content(
-                prompt,
-                generation_config={"temperature": 0.3, "max_output_tokens": 2048},
+        def _call() -> Any:
+            return client.models.generate_content(
+                model=model_name,
+                contents=[{"role": "user", "content": prompt}],
+                config={
+                    "system_instruction": system_prompt,
+                    "temperature": 0.3,
+                    "max_output_tokens": 2048,
+                },
             )
 
-        result = await asyncio.to_thread(_legacy_call)
+        result = await asyncio.to_thread(_call)
         text = getattr(result, "text", None)
+        if not text:
+            candidates = getattr(result, "candidates", None) or []
+            if candidates:
+                content = getattr(candidates[0], "content", None)
+                parts = getattr(content, "parts", None) or []
+                if parts:
+                    text = getattr(parts[0], "text", None)
         if text:
             return {"text": str(text), "backend": "GEMINI", "raw": result}
         return {"text": "No response returned by Gemini.", "backend": "GEMINI"}
     except Exception as exc:
         logger.exception("Gemini call failed")
-        return {"text": f"(GEMINI-FALLBACK) {prompt[:400]}", "backend": "GEMINI", "error": str(exc)}
+        return {
+            "text": f"Gemini request failed: {str(exc)[:200]}",
+            "backend": "GEMINI",
+            "error": str(exc),
+        }
 
 
 async def call_openrouter(prompt: str) -> Dict[str, Any]:
