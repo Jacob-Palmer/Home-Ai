@@ -13,6 +13,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
+__version__ = "build-20261006-150915"  # Version ID to track deployments
+
 load_dotenv()
 
 logger = logging.getLogger("home_ai_gatekeeper")
@@ -409,6 +411,11 @@ async def drive_files() -> Dict[str, Any]:
 @app.get("/health")
 async def health() -> Dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/version")
+async def version() -> Dict[str, str]:
+    return {"version": __version__, "status": "running"}
 
 
 @app.post("/route", response_model=RouteResponse)
