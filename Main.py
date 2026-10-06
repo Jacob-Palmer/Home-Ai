@@ -172,8 +172,8 @@ async def gatekeeper_decision(prompt: str) -> str:
         return _fallback_gatekeeper(prompt)
 
     try:
-        from google import genai as google_genai
-        client = google_genai.Client(api_key=api_key)
+        import google.genai
+        client = google.genai.Client(api_key=api_key)
 
         def _call() -> str:
             response = client.models.generate_content(
@@ -219,8 +219,8 @@ async def call_gemini(prompt: str) -> Dict[str, Any]:
     system_prompt = "You are a helpful assistant. Answer clearly, accurately, and concisely."
 
     try:
-        from google import genai as google_genai
-        client = google_genai.Client(api_key=api_key)
+        import google.genai
+        client = google.genai.Client(api_key=api_key)
 
         def _call() -> Any:
             return client.models.generate_content(
